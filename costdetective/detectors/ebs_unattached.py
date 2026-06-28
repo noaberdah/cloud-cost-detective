@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from costdetective.awsclients import client
 from costdetective.models import Finding, severity_from_savings
 from costdetective.pricing import ebs_monthly_cost
 
@@ -20,7 +21,7 @@ def _tags_to_dict(tag_list) -> dict:
 
 
 def detect(session, region: str) -> list[Finding]:
-    ec2 = session.client("ec2", region_name=region)
+    ec2 = client(session, "ec2", region)
     findings: list[Finding] = []
 
     paginator = ec2.get_paginator("describe_volumes")

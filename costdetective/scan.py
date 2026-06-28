@@ -10,14 +10,32 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from costdetective.detectors import ebs_unattached, ec2_idle
+from costdetective.detectors import (
+    ebs_gp2_to_gp3,
+    ebs_unattached,
+    ec2_idle,
+    ec2_rightsize,
+    eip_unused,
+    lb_idle,
+    rds_overprovisioned,
+    snapshots_orphaned,
+)
 from costdetective.models import Finding, rank_findings
 
 log = logging.getLogger(__name__)
 
 # The deterministic, read-only AWS detectors, run in order. Each module exposes
 # a ``NAME`` and a ``detect(session, region) -> list[Finding]`` function.
-DETECTORS = [ebs_unattached, ec2_idle]
+DETECTORS = [
+    ebs_unattached,
+    ebs_gp2_to_gp3,
+    snapshots_orphaned,
+    ec2_idle,
+    ec2_rightsize,
+    eip_unused,
+    lb_idle,
+    rds_overprovisioned,
+]
 
 
 @dataclass

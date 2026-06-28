@@ -48,15 +48,15 @@ a stage, STOP, let the human test it, then continue. Tick boxes as you go.
 - [x] A single broken detector logs a warning but does not crash the audit
 
 ## Stage 3 — More detectors
-- [ ] Unused Elastic IPs
-- [ ] gp2 → gp3 migration candidates
-- [ ] Old / orphaned snapshots
-- [ ] Idle load balancers
-- [ ] Overprovisioned RDS
-- [ ] EC2 rightsizing (recommend a smaller type from CPU; flag memory as unverified)
+- [x] Unused Elastic IPs
+- [x] gp2 → gp3 migration candidates
+- [x] Old / orphaned snapshots
+- [x] Idle load balancers
+- [x] Overprovisioned RDS
+- [x] EC2 rightsizing (recommend a smaller type from CPU; flag memory as unverified)
 
 **Done when:**
-- [ ] Each detector is its own registered module with a unit test against synthetic input
+- [x] Each detector is its own registered module with a unit test against synthetic input
 
 ## Stage 4 — Real spend + anomaly + tags
 - [ ] Wire Cost Explorer (`ce:GetCostAndUsage`) for real monthly spend by service

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from costdetective.awsclients import client
 from costdetective.models import Finding, severity_from_savings
 from costdetective.pricing import ec2_monthly_cost
 
@@ -26,8 +27,8 @@ def _tags_to_dict(tag_list) -> dict:
 
 
 def detect(session, region: str) -> list[Finding]:
-    ec2 = session.client("ec2", region_name=region)
-    cw = session.client("cloudwatch", region_name=region)
+    ec2 = client(session, "ec2", region)
+    cw = client(session, "cloudwatch", region)
     findings: list[Finding] = []
 
     end = datetime.now(timezone.utc)
