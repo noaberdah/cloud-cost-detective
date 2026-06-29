@@ -30,7 +30,7 @@ def detect(session, region: str) -> list[Finding]:
         for vol in page.get("Volumes", []):
             size_gb = vol["Size"]
             vol_type = vol.get("VolumeType", "gp2")
-            monthly = ebs_monthly_cost(vol_type, size_gb)
+            monthly = ebs_monthly_cost(vol_type, size_gb, region=region)
             tags = _tags_to_dict(vol.get("Tags"))
 
             age_days = _age_days(vol.get("CreateTime"))

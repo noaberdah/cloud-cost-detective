@@ -62,8 +62,8 @@ def _evaluate_instance(cw, inst, region, start, end) -> Finding | None:
     if smaller is None:
         return None  # already smallest in its family, or unknown family
 
-    current_cost = ec2_monthly_cost(instance_type)
-    target_cost = ec2_monthly_cost(smaller)
+    current_cost = ec2_monthly_cost(instance_type, region=region)
+    target_cost = ec2_monthly_cost(smaller, region=region)
     if current_cost is None or target_cost is None:
         return None  # no pricing -> can't make a credible recommendation
 

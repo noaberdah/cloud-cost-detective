@@ -400,5 +400,112 @@ class TestRdsOverprovisioned(unittest.TestCase):
         self.assertEqual(rds_overprovisioned.detect(session, REGION), [])
 
 
+class TestCostExplorer(unittest.TestCase):
+    def test_fetch_monthly_spend_sums_groups(self):
+        from costdetective.cost_explorer import fetch_monthly_spend
+
+        ce = FakeClient(
+            get_cost_and_usage=lambda **_: {
+                "ResultsByTime": [
+                    {
+                        "TimePeriod": {"Start": "2026-05-30", "End": "2026-06-29"},
+                        "Groups": [
+                            {"Keys": ["Amazon EC2"], "Metrics": {"UnblendedCost": {"Amount": "1234.56"}}},
+                            {"Keys": ["Amazon S3"], "Metrics": {"UnblendedCost": {"Amount": "42.00"}}},
+                            {"Keys": ["Amazon RDS"], "Metrics": {"UnblendedCost": {"Amount": "0.00"}}},
+                        ],
+                    }
+                ],
+            },
+        )
+        spend = fetch_monthly_spend(FakeSession(ce=ce))
+        self.assertAlmostEqual(spend.total_usd, 1276.56, places=2)
+        self.assertIn("Amazon EC2", spend.by_service)
+        self.assertNotIn("Amazon RDS", spend.by_service)  # zero is filtered out
+
+    def test_detect_spend_anomalies_flags_thirty_percent_jump(self):
+        from datetime import date, timedelta
+
+        from costdetective.cost_explorer import detect_spend_anomalies
+
+        end = date.today()
+        midpoint = end - timedelta(days=7)
+        # Prev-week S3 spend: $10/day, this-week: $50/day -> 5x jump.
+        # Prev-week EC2 spend: $100/day, this-week: $105/day -> noise, skipped.
+        results_by_time = []
+        for offset in range(14, 0, -1):
+            day = end - timedelta(days=offset)
+            in_this_week = day >= midpoint
+            s3 = 50.0 if in_this_week else 10.0
+            ec2 = 105.0 if in_this_week else 100.0
+            results_by_time.append({
+                "TimePeriod": {"Start": day.isoformat(), "End": (day + timedelta(days=1)).isoformat()},
+                "Groups": [
+                    {"Keys": ["Amazon S3"], "Metrics": {"UnblendedCost": {"Amount": str(s3)}}},
+                    {"Keys": ["Amazon EC2"], "Metrics": {"UnblendedCost": {"Amount": str(ec2)}}},
+                ],
+            })
+
+        ce = FakeClient(get_cost_and_usage=lambda **_: {"ResultsByTime": results_by_time})
+        anomalies = detect_spend_anomalies(FakeSession(ce=ce))
+
+        services = [a.service for a in anomalies]
+        self.assertIn("Amazon S3", services)
+        self.assertNotIn("Amazon EC2", services)
+        s3 = next(a for a in anomalies if a.service == "Amazon S3")
+        self.assertGreater(s3.pct_change, 0.3)
+
+
+class TestOwnerGrouping(unittest.TestCase):
+    def test_groups_by_first_matching_tag_key(self):
+        from costdetective.models import (
+            Finding,
+            Severity,
+            UNTAGGED_BUCKET,
+            group_findings_by_owner,
+        )
+
+        def f(tags):
+            return Finding(
+                detector="x", resource_id="r", resource_type="t", region=REGION,
+                severity=Severity.LOW, monthly_savings=1.0, summary="", recommendation="",
+                details={"tags": tags},
+            )
+
+        groups = group_findings_by_owner([
+            f({"Owner": "platform"}),
+            f({"owner": "platform"}),       # lowercase still matches
+            f({"Team": "payments"}),
+            f({"Name": "no-owner-here"}),   # only Name tag -> untagged bucket
+            f({}),
+        ])
+        self.assertEqual(len(groups["platform"]), 2)
+        self.assertEqual(len(groups["payments"]), 1)
+        self.assertEqual(len(groups[UNTAGGED_BUCKET]), 2)
+
+
+class TestPricingLiveOverride(unittest.TestCase):
+    def test_live_pricer_overrides_fallback_for_ebs(self):
+        from costdetective import pricing
+
+        class FakeLive:
+            def ebs_gb_month(self, volume_type, region):
+                return 0.20 if volume_type == "gp3" else None
+            def ec2_hourly(self, instance_type, region):
+                return None
+            def rds_hourly(self, db_class, engine, region, multi_az=False):
+                return None
+
+        try:
+            pricing.bind_live_pricer(FakeLive())
+            # Live override: 100 GB * $0.20 = $20.00
+            self.assertEqual(pricing.ebs_monthly_cost("gp3", 100), 20.00)
+            # Fallback path kicks in for unknown types
+            fallback = pricing.ebs_monthly_cost("gp2", 100)
+            self.assertEqual(fallback, round(pricing.EBS_GB_MONTH["gp2"] * 100, 2))
+        finally:
+            pricing.bind_live_pricer(None)
+
+
 if __name__ == "__main__":
     unittest.main()

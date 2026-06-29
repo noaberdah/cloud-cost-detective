@@ -1,14 +1,17 @@
-"""Deterministic cost math with a hardcoded fallback price map.
+"""Deterministic cost math with live Pricing API lookups + a hardcoded fallback.
 
-Stage 4 replaces these tables with live AWS Pricing API lookups. Until then we
-use representative **us-east-1 on-demand** prices so the dollar math is plausible
-and fully offline. All arithmetic lives here in plain Python — never in the API.
+Stage 4 wired the live AWS Pricing API in via :mod:`pricing_live`. The hardcoded
+**us-east-1 on-demand** maps below are the safety net: used when the live client
+isn't bound (synthetic mode, tests), when the API returns no hit, or when the
+network call fails. All arithmetic stays in plain Python — never in an LLM.
 
-Prices are approximate (USD) and will drift; they are good enough for ranking
-waste by impact, which is the point.
+The detectors call these module-level functions; they never need to know
+whether the price came from the API or the fallback map.
 """
 
 from __future__ import annotations
+
+from typing import Protocol
 
 HOURS_PER_MONTH = 730  # AWS billing convention
 
@@ -48,9 +51,36 @@ EC2_HOURLY: dict[str, float] = {
 }
 
 
-def ebs_monthly_cost(volume_type: str, size_gb: float) -> float:
+class _LivePricer(Protocol):
+    """The slice of :class:`pricing_live.LivePricingClient` the lookups need."""
+
+    def ebs_gb_month(self, volume_type: str, region: str) -> float | None: ...
+    def ec2_hourly(self, instance_type: str, region: str) -> float | None: ...
+    def rds_hourly(
+        self, db_class: str, engine: str, region: str, multi_az: bool = False
+    ) -> float | None: ...
+
+
+_live: _LivePricer | None = None
+
+
+def bind_live_pricer(pricer: _LivePricer | None) -> None:
+    """Install (or clear) the live Pricing API client used by the lookups below."""
+    global _live
+    _live = pricer
+
+
+def _live_or(value: float | None, fallback: float | None) -> float | None:
+    return value if value is not None else fallback
+
+
+def ebs_monthly_cost(volume_type: str, size_gb: float, region: str = "us-east-1") -> float:
     """Monthly cost of an EBS volume from its type and size."""
-    rate = EBS_GB_MONTH.get(volume_type, _EBS_DEFAULT_GB_MONTH)
+    rate: float | None = None
+    if _live is not None:
+        rate = _live.ebs_gb_month(volume_type, region)
+    if rate is None:
+        rate = EBS_GB_MONTH.get(volume_type, _EBS_DEFAULT_GB_MONTH)
     return round(rate * size_gb, 2)
 
 
@@ -59,9 +89,13 @@ def ebs_snapshot_monthly_cost(size_gb: float) -> float:
     return round(EBS_SNAPSHOT_GB_MONTH * size_gb, 2)
 
 
-def ec2_monthly_cost(instance_type: str) -> float | None:
+def ec2_monthly_cost(instance_type: str, region: str = "us-east-1") -> float | None:
     """Monthly on-demand cost of an EC2 instance type, or None if unknown."""
-    hourly = EC2_HOURLY.get(instance_type)
+    hourly: float | None = None
+    if _live is not None:
+        hourly = _live.ec2_hourly(instance_type, region)
+    if hourly is None:
+        hourly = EC2_HOURLY.get(instance_type)
     if hourly is None:
         return None
     return round(hourly * HOURS_PER_MONTH, 2)
@@ -136,17 +170,27 @@ _RDS_HOURLY_SINGLE_AZ = {
 _RDS_FREE_ENGINES = {"mysql", "postgres", "mariadb", "aurora", "aurora-mysql", "aurora-postgresql"}
 
 
-def rds_monthly_cost(db_class: str, engine: str, multi_az: bool = False) -> float | None:
+def rds_monthly_cost(
+    db_class: str,
+    engine: str,
+    multi_az: bool = False,
+    region: str = "us-east-1",
+) -> float | None:
     """Approximate monthly RDS cost. Returns None for unmapped class/engine combos.
 
     Multi-AZ roughly doubles the per-hour rate. Licensed engines (Oracle, SQL
-    Server) aren't in the fallback map — Stage 4 wires the live Pricing API.
+    Server) aren't in the fallback map; the live Pricing API can still price
+    them when bound.
     """
-    if engine.lower() not in _RDS_FREE_ENGINES:
-        return None
-    hourly = _RDS_HOURLY_SINGLE_AZ.get(db_class)
+    hourly: float | None = None
+    if _live is not None:
+        hourly = _live.rds_hourly(db_class, engine, region, multi_az)
     if hourly is None:
-        return None
-    if multi_az:
-        hourly *= 2
+        if engine.lower() not in _RDS_FREE_ENGINES:
+            return None
+        hourly = _RDS_HOURLY_SINGLE_AZ.get(db_class)
+        if hourly is None:
+            return None
+        if multi_az:
+            hourly *= 2
     return round(hourly * HOURS_PER_MONTH, 2)

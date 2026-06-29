@@ -70,7 +70,7 @@ def _evaluate_instance(cw, inst, region, start, end) -> Finding | None:
     if peak >= IDLE_PEAK_CPU_PCT:
         return None  # the instance gets real use
 
-    monthly = ec2_monthly_cost(instance_type)
+    monthly = ec2_monthly_cost(instance_type, region=region)
     price_known = monthly is not None
     monthly = monthly if price_known else 0.0
 

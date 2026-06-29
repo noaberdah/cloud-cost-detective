@@ -59,13 +59,13 @@ a stage, STOP, let the human test it, then continue. Tick boxes as you go.
 - [x] Each detector is its own registered module with a unit test against synthetic input
 
 ## Stage 4 — Real spend + anomaly + tags
-- [ ] Wire Cost Explorer (`ce:GetCostAndUsage`) for real monthly spend by service
-- [ ] Wire the Pricing API for accurate per-resource cost (replace the fallback map)
-- [ ] Anomaly detection: flag week-over-week spend jumps (e.g. > 30%)
-- [ ] Group findings by owner / team tag
+- [x] Wire Cost Explorer (`ce:GetCostAndUsage`) for real monthly spend by service
+- [x] Wire the Pricing API for accurate per-resource cost (replace the fallback map)
+- [x] Anomaly detection: flag week-over-week spend jumps (e.g. > 30%)
+- [x] Group findings by owner / team tag
 
 **Done when:**
-- [ ] Report shows real total spend + recoverable, any spend spikes, and per-tag grouping
+- [x] Report shows real total spend + recoverable, any spend spikes, and per-tag grouping
 
 ## Stage 5 — Agent layer (in-code, Anthropic API)
 **Goal:** the multi-agent reasoning, living inside the program.

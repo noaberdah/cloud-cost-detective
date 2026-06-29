@@ -32,8 +32,8 @@ def detect(session, region: str) -> list[Finding]:
     for page in pages:
         for vol in page.get("Volumes", []):
             size_gb = vol["Size"]
-            current_cost = ebs_monthly_cost("gp2", size_gb)
-            new_cost = ebs_monthly_cost("gp3", size_gb)
+            current_cost = ebs_monthly_cost("gp2", size_gb, region=region)
+            new_cost = ebs_monthly_cost("gp3", size_gb, region=region)
             monthly = round(current_cost - new_cost, 2)
             if monthly <= 0:
                 continue

@@ -7,6 +7,9 @@ numbers mirror real us-east-1 pricing closely enough to be believable.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
+from costdetective.cost_explorer import SpendAnomaly, SpendSummary
 from costdetective.models import Finding, Severity
 
 
@@ -123,5 +126,53 @@ def generate_findings(region: str = "us-east-1") -> list[Finding]:
                 "target_type": "gp3",
                 "tags": {"owner": "web"},
             },
+        ),
+    ]
+
+
+def generate_spend() -> SpendSummary:
+    """A plausible 30-day spend breakdown for the synthetic report."""
+    end = date.today()
+    start = end - timedelta(days=30)
+    by_service = {
+        "Amazon Elastic Compute Cloud - Compute": 4_812.40,
+        "Amazon Relational Database Service": 1_204.18,
+        "Amazon Simple Storage Service": 612.55,
+        "Amazon Elastic Load Balancing": 188.32,
+        "Amazon CloudFront": 142.10,
+        "AWS Lambda": 38.27,
+        "Amazon Route 53": 12.40,
+    }
+    return SpendSummary(
+        total_usd=round(sum(by_service.values()), 2),
+        by_service=by_service,
+        period_start=start,
+        period_end=end,
+        days=30,
+    )
+
+
+def generate_anomalies() -> list[SpendAnomaly]:
+    """A couple of representative spend spikes for the synthetic report."""
+    end = date.today()
+    start = end - timedelta(days=14)
+    return [
+        SpendAnomaly(
+            service="Amazon Simple Storage Service",
+            previous_week_usd=98.10,
+            this_week_usd=164.72,
+            pct_change=0.679,
+            threshold=0.30,
+            period_start=start,
+            period_end=end,
+        ),
+        SpendAnomaly(
+            service="AWS Lambda",
+            previous_week_usd=11.20,
+            this_week_usd=4.92,
+            pct_change=-0.561,
+            threshold=0.30,
+            period_start=start,
+            period_end=end,
         ),
     ]

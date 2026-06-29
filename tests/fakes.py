@@ -48,7 +48,8 @@ class FakeSession:
     def __init__(self, **clients):
         self._clients = clients
 
-    def client(self, name: str, region_name: str | None = None):
+    def client(self, name: str, region_name: str | None = None, **_kwargs):
+        # Real boto3 accepts extra kwargs like ``config=...``; ignore them here.
         if name not in self._clients:
             raise KeyError(f"no fake client configured for service {name!r}")
         return self._clients[name]

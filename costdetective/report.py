@@ -10,6 +10,7 @@ from __future__ import annotations
 import html
 from pathlib import Path
 
+from costdetective.cost_explorer import SpendAnomaly, SpendSummary
 from costdetective.models import Finding, Severity
 from costdetective.scan import AuditResult
 
@@ -79,6 +80,83 @@ def _finding_row(index: int, f: Finding) -> str:
       </tr>"""
 
 
+def _spend_card(spend: SpendSummary | None, error: str | None) -> str:
+    """One metric card showing real 30-day spend, or a graceful fallback."""
+    if spend is None:
+        msg = "Cost Explorer unavailable" if error else "Not fetched"
+        return (
+            '<div class="card"><div class="label">Real spend (30d)</div>'
+            f'<div class="value muted">{_esc(msg)}</div></div>'
+        )
+    return (
+        '<div class="card"><div class="label">Real spend (last 30d)</div>'
+        f'<div class="value">{_money(spend.total_usd)}</div></div>'
+    )
+
+
+def _spend_breakdown_section(spend: SpendSummary | None) -> str:
+    if spend is None or not spend.by_service:
+        return ""
+    top = spend.top_services[:8]
+    rows = "".join(
+        f'<tr><td>{_esc(service)}</td><td class="money">{_money(amount)}</td></tr>'
+        for service, amount in top
+    )
+    period = f"{spend.period_start.isoformat()} → {spend.period_end.isoformat()}"
+    return f"""
+    <section class="panel">
+      <h2>Real spend by service <span class="period">{_esc(period)}</span></h2>
+      <table class="mini">
+        <thead><tr><th>Service</th><th class="money">$ in period</th></tr></thead>
+        <tbody>{rows}</tbody>
+      </table>
+    </section>"""
+
+
+def _anomaly_section(anomalies: list[SpendAnomaly]) -> str:
+    if not anomalies:
+        return ""
+    items = "".join(
+        f'<li class="anomaly anomaly-{a.direction}">'
+        f'<span class="arrow">{"↑" if a.direction == "up" else "↓"}</span> '
+        f'<span class="anom-text">{_esc(a.summary())}</span>'
+        f"</li>"
+        for a in anomalies
+    )
+    return f"""
+    <section class="panel">
+      <h2>Spend anomalies <span class="period">week-over-week</span></h2>
+      <ul class="anoms">{items}</ul>
+    </section>"""
+
+
+def _owner_groups_section(result: AuditResult) -> str:
+    groups = result.findings_by_owner
+    if not groups:
+        return ""
+    ordered = sorted(
+        groups.items(),
+        key=lambda kv: sum(f.monthly_savings for f in kv[1]),
+        reverse=True,
+    )
+    rows = []
+    for owner, items in ordered:
+        subtotal = sum(f.monthly_savings for f in items)
+        rows.append(
+            f"<tr><td>{_esc(owner)}</td>"
+            f'<td class="center">{len(items)}</td>'
+            f'<td class="money">{_money(subtotal)}</td></tr>'
+        )
+    return f"""
+    <section class="panel">
+      <h2>Findings by owner / team tag</h2>
+      <table class="mini">
+        <thead><tr><th>Owner</th><th class="center">Findings</th><th class="money">Recoverable / month</th></tr></thead>
+        <tbody>{"".join(rows)}</tbody>
+      </table>
+    </section>"""
+
+
 def render_report(result: AuditResult) -> str:
     """Return the full HTML document for an audit result."""
     rows = "".join(
@@ -93,6 +171,12 @@ def render_report(result: AuditResult) -> str:
     mode = "Synthetic sample data" if result.synthetic else "Live AWS account"
     generated = result.generated_at.strftime("%Y-%m-%d %H:%M UTC")
     finding_count = len(result.findings)
+    pct = result.savings_pct_of_spend
+    pct_card = (
+        '<div class="card"><div class="label">Recoverable share of spend</div>'
+        f'<div class="value">{pct:.1f}%</div></div>'
+        if pct is not None else ""
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -147,6 +231,25 @@ def render_report(result: AuditResult) -> str:
     border-radius: 999px; overflow: hidden; }}
   .conf-fill {{ position: absolute; inset: 0 auto 0 0; background: #6366f1; }}
   .empty {{ text-align: center; color: #64748b; padding: 2.5rem 1rem; }}
+  .muted {{ color: #94a3b8; font-size: 1rem; font-weight: 500; }}
+  .panel {{ background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 1.25rem 1.5rem; margin-top: 1.5rem;
+    box-shadow: 0 1px 2px rgba(15,23,42,.04); }}
+  .panel h2 {{ margin: 0 0 .9rem; font-size: 1.05rem; color: #0f172a; }}
+  .panel h2 .period {{ font-size: .75rem; color: #94a3b8; font-weight: 500;
+    margin-left: .5rem; text-transform: uppercase; letter-spacing: .04em; }}
+  table.mini {{ width: 100%; border: none; box-shadow: none; }}
+  table.mini thead th {{ background: transparent; padding: .4rem .5rem;
+    color: #64748b; }}
+  table.mini tbody td {{ padding: .5rem .5rem; }}
+  ul.anoms {{ list-style: none; padding: 0; margin: 0; }}
+  ul.anoms li {{ display: flex; gap: .55rem; align-items: baseline;
+    padding: .55rem .25rem; border-bottom: 1px solid #f1f5f9; }}
+  ul.anoms li:last-child {{ border-bottom: none; }}
+  .anomaly .arrow {{ font-weight: 700; font-size: 1rem; }}
+  .anomaly-up .arrow {{ color: #b91c1c; }}
+  .anomaly-down .arrow {{ color: #15803d; }}
+  .anom-text {{ color: #1e293b; }}
   footer {{ color: #94a3b8; font-size: .8rem; margin-top: 1.5rem; text-align: center; }}
 </style>
 </head>
@@ -166,12 +269,19 @@ def render_report(result: AuditResult) -> str:
         <div class="label">Recoverable / year</div>
         <div class="value">{_money(result.total_annual_savings)}</div>
       </div>
+      {_spend_card(result.spend, result.spend_error)}
+      {pct_card}
       <div class="card">
         <div class="label">Findings</div>
         <div class="value">{finding_count}</div>
       </div>
     </section>
 
+    {_anomaly_section(result.anomalies)}
+    {_spend_breakdown_section(result.spend)}
+    {_owner_groups_section(result)}
+
+    <h2 style="margin-top:1.75rem;font-size:1.05rem;">All findings, ranked</h2>
     <table>
       <thead>
         <tr>

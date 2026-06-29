@@ -77,3 +77,36 @@ def rank_findings(findings: list[Finding]) -> list[Finding]:
         key=lambda f: (f.monthly_savings, f.severity.rank, f.confidence),
         reverse=True,
     )
+
+
+# Tag keys to look at for owner/team grouping, in priority order. The first
+# one that produces a non-empty value wins for a given finding.
+DEFAULT_OWNER_TAG_KEYS = ("Owner", "owner", "Team", "team", "Project", "project")
+UNTAGGED_BUCKET = "(untagged)"
+
+
+def group_findings_by_owner(
+    findings: list[Finding],
+    tag_keys: tuple[str, ...] = DEFAULT_OWNER_TAG_KEYS,
+) -> dict[str, list[Finding]]:
+    """Group findings by the first matching owner/team/project tag.
+
+    Findings whose ``details.tags`` is empty or holds none of the requested
+    keys land in ``UNTAGGED_BUCKET`` — usually the largest and most actionable
+    group, because untagged spend has no one to ask.
+    """
+    groups: dict[str, list[Finding]] = {}
+    for f in findings:
+        tags = f.details.get("tags") if isinstance(f.details, dict) else None
+        owner = _first_tag_value(tags, tag_keys) if tags else None
+        bucket = owner or UNTAGGED_BUCKET
+        groups.setdefault(bucket, []).append(f)
+    return groups
+
+
+def _first_tag_value(tags: dict, keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        value = tags.get(key)
+        if value:
+            return str(value)
+    return None

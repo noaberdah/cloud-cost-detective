@@ -65,7 +65,7 @@ def _evaluate_db(cw, db, region, start, end) -> Finding | None:
     if peak >= LOW_PEAK_CPU_PCT:
         return None
 
-    full = rds_monthly_cost(db_class, engine, multi_az=multi_az)
+    full = rds_monthly_cost(db_class, engine, multi_az=multi_az, region=region)
     # Rough estimate: a one-size-down move saves ~half the per-class cost.
     monthly = round(full * 0.5, 2) if full else 0.0
 
