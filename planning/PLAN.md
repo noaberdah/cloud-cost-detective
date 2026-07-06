@@ -69,15 +69,15 @@ a stage, STOP, let the human test it, then continue. Tick boxes as you go.
 
 ## Stage 5 — Agent layer (in-code, Anthropic API)
 **Goal:** the multi-agent reasoning, living inside the program.
-- [ ] `agents/waste_hunter.py` — API call: review findings, lower confidence on likely
+- [x] `agents/waste_hunter.py` — API call: review findings, lower confidence on likely
       false positives, with a one-line reason each
-- [ ] `agents/savings_analyst.py` — API call: rank by $ vs. effort; narrate RI / Savings Plan gaps
-- [ ] `agents/reporter.py` — API call: write the executive-summary prose for the report
-- [ ] Wire the agents into the pipeline after detection; deterministic math stays in Python
+- [x] `agents/savings_analyst.py` — API call: rank by $ vs. effort; narrate RI / Savings Plan gaps
+- [x] `agents/reporter.py` — API call: write the executive-summary prose for the report
+- [x] Wire the agents into the pipeline after detection; deterministic math stays in Python
 
 **Done when:**
-- [ ] Findings carry an AI confidence + justification, plus a ranked written summary
-- [ ] Running without `ANTHROPIC_API_KEY` still works (agents degrade gracefully)
+- [x] Findings carry an AI confidence + justification, plus a ranked written summary
+- [x] Running without `ANTHROPIC_API_KEY` still works (agents degrade gracefully)
 
 ## Stage 6 — Trend tracking + polished report
 - [ ] Persist each run (SQLite, or timestamped JSON in `runs/`)

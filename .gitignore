@@ -2,8 +2,4 @@
 findings*.json
 report.html
 __pycache__/
-
-.venv/
-__pycache__/
-findings*.json
-report.html
+.env

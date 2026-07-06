@@ -8,6 +8,19 @@ import logging
 from costdetective.report import write_report
 from costdetective.scan import AuditResult, run_audit
 
+
+def _load_env() -> None:
+    """Load ``.env`` (e.g. ``ANTHROPIC_API_KEY``) if python-dotenv is present.
+
+    Optional by design: a missing package or file leaves real environment
+    variables untouched, so the tool still runs without it.
+    """
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv()
+
 DEFAULT_REGION = "us-east-1"
 DEFAULT_OUTPUT = "report.html"
 
@@ -99,6 +112,7 @@ def _cmd_audit(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _load_env()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = _build_parser()
     args = parser.parse_args(argv)

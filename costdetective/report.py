@@ -1,8 +1,9 @@
 """Render an :class:`AuditResult` into a styled, self-contained HTML report.
 
 No external assets or dependencies — the CSS is inlined so the file opens
-anywhere. The agent-written executive summary (Stage 5) will slot in later;
-for now we show a deterministic summary line.
+anywhere. When the agent layer (Stage 5) is available, the report gains an
+AI-written executive summary, a prioritization/commitments panel, and a
+per-finding confidence caveat; without it, those sections are simply omitted.
 """
 
 from __future__ import annotations
@@ -47,17 +48,31 @@ def _confidence_bar(confidence: float) -> str:
     )
 
 
+# Keys the agent layer writes into details; rendered specially, not as chips.
+_AGENT_DETAIL_KEYS = {"ai_confidence_reason"}
+
+
 def _detail_chips(details: dict) -> str:
     if not details:
         return ""
     chips = []
     for key, val in details.items():
+        if key in _AGENT_DETAIL_KEYS:
+            continue
         if key == "tags" and isinstance(val, dict):
             for tk, tv in val.items():
                 chips.append(f'<span class="chip tag">{_esc(tk)}: {_esc(tv)}</span>')
         else:
             chips.append(f'<span class="chip">{_esc(key)}: {_esc(val)}</span>')
     return '<div class="chips">' + "".join(chips) + "</div>"
+
+
+def _ai_note(f: Finding) -> str:
+    """Render the waste-hunter's one-line confidence caveat, if it left one."""
+    reason = f.details.get("ai_confidence_reason")
+    if not reason:
+        return ""
+    return f'<div class="ai-note"><span class="ai-tag">AI</span> {_esc(reason)}</div>'
 
 
 def _finding_row(index: int, f: Finding) -> str:
@@ -71,6 +86,7 @@ def _finding_row(index: int, f: Finding) -> str:
             &middot; {_esc(f.region)} &middot; <em>{_esc(f.detector)}</em>
           </div>
           <div class="rec">&rarr; {_esc(f.recommendation)}</div>
+          {_ai_note(f)}
           {_detail_chips(f.details)}
         </td>
         <td class="center">{_severity_badge(f.severity)}</td>
@@ -127,6 +143,47 @@ def _anomaly_section(anomalies: list[SpendAnomaly]) -> str:
     <section class="panel">
       <h2>Spend anomalies <span class="period">week-over-week</span></h2>
       <ul class="anoms">{items}</ul>
+    </section>"""
+
+
+def _summary_section(result: AuditResult) -> str:
+    """The agent-written executive summary, as paragraphs. Omitted when absent."""
+    if not result.summary:
+        return ""
+    paras = "".join(
+        f"<p>{_esc(p.strip())}</p>"
+        for p in result.summary.split("\n\n")
+        if p.strip()
+    )
+    return f"""
+    <section class="panel summary-panel">
+      <h2>Executive summary <span class="ai-tag">AI-written</span></h2>
+      {paras}
+    </section>"""
+
+
+def _analysis_section(result: AuditResult) -> str:
+    """Prioritization strategy and RI / Savings Plan opportunity from the analyst."""
+    analysis = result.savings_analysis
+    if analysis is None or not (analysis.strategy or analysis.commitment_note):
+        return ""
+    blocks = []
+    if analysis.strategy:
+        blocks.append(
+            '<div class="analysis-block"><div class="analysis-label">'
+            "Where to start</div>"
+            f"<p>{_esc(analysis.strategy)}</p></div>"
+        )
+    if analysis.commitment_note:
+        blocks.append(
+            '<div class="analysis-block"><div class="analysis-label">'
+            "Reserved Instance / Savings Plan opportunity</div>"
+            f"<p>{_esc(analysis.commitment_note)}</p></div>"
+        )
+    return f"""
+    <section class="panel">
+      <h2>Prioritization &amp; commitments <span class="ai-tag">AI-written</span></h2>
+      {"".join(blocks)}
     </section>"""
 
 
@@ -250,6 +307,21 @@ def render_report(result: AuditResult) -> str:
   .anomaly-up .arrow {{ color: #b91c1c; }}
   .anomaly-down .arrow {{ color: #15803d; }}
   .anom-text {{ color: #1e293b; }}
+  .ai-tag {{ display: inline-block; font-size: .62rem; font-weight: 700;
+    letter-spacing: .05em; text-transform: uppercase; color: #6d28d9;
+    background: #ede9fe; padding: .12rem .4rem; border-radius: 999px;
+    vertical-align: middle; }}
+  .summary-panel {{ border-left: 4px solid #7c3aed; }}
+  .summary-panel p {{ margin: .6rem 0; color: #1e293b; }}
+  .summary-panel p:first-of-type {{ margin-top: 0; }}
+  .analysis-block {{ margin-top: .9rem; }}
+  .analysis-block:first-of-type {{ margin-top: 0; }}
+  .analysis-label {{ font-size: .78rem; font-weight: 700; color: #6d28d9;
+    text-transform: uppercase; letter-spacing: .03em; }}
+  .analysis-block p {{ margin: .3rem 0 0; color: #334155; }}
+  .ai-note {{ margin-top: .5rem; font-size: .84rem; color: #5b21b6;
+    background: #f5f3ff; border-radius: 8px; padding: .4rem .6rem; }}
+  .ai-note .ai-tag {{ margin-right: .35rem; }}
   footer {{ color: #94a3b8; font-size: .8rem; margin-top: 1.5rem; text-align: center; }}
 </style>
 </head>
@@ -277,7 +349,9 @@ def render_report(result: AuditResult) -> str:
       </div>
     </section>
 
+    {_summary_section(result)}
     {_anomaly_section(result.anomalies)}
+    {_analysis_section(result)}
     {_spend_breakdown_section(result.spend)}
     {_owner_groups_section(result)}
 

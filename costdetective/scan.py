@@ -18,6 +18,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from costdetective import pricing
+from costdetective.agents import base as agent_base
+from costdetective.agents import reporter, savings_analyst, waste_hunter
+from costdetective.agents.savings_analyst import SavingsAnalysis
 from costdetective.cost_explorer import (
     CostExplorerResult,
     SpendAnomaly,
@@ -66,6 +69,9 @@ class AuditResult:
     spend: SpendSummary | None = None
     anomalies: list[SpendAnomaly] = field(default_factory=list)
     spend_error: str | None = None
+    # Populated by the agent layer (Stage 5); stay None when the API is off.
+    savings_analysis: SavingsAnalysis | None = None
+    summary: str | None = None
     generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
@@ -97,24 +103,50 @@ def run_audit(region: str = "us-east-1", synthetic: bool = False) -> AuditResult
             generate_spend,
         )
 
-        findings = generate_findings(region=region)
-        return AuditResult(
+        result = AuditResult(
             region=region,
             synthetic=True,
-            findings=rank_findings(findings),
+            findings=rank_findings(generate_findings(region=region)),
             spend=generate_spend(),
             anomalies=generate_anomalies(),
         )
+    else:
+        findings, ce_result = _run_real_audit(region=region)
+        result = AuditResult(
+            region=region,
+            synthetic=False,
+            findings=rank_findings(findings),
+            spend=ce_result.spend,
+            anomalies=ce_result.anomalies,
+            spend_error=ce_result.error,
+        )
 
-    findings, ce_result = _run_real_audit(region=region)
-    return AuditResult(
-        region=region,
-        synthetic=False,
-        findings=rank_findings(findings),
-        spend=ce_result.spend,
-        anomalies=ce_result.anomalies,
-        spend_error=ce_result.error,
-    )
+    _apply_agent_layer(result)
+    return result
+
+
+def _apply_agent_layer(result: AuditResult) -> None:
+    """Layer Anthropic judgment onto the deterministic result, in place.
+
+    Runs the three in-code agents in order: waste_hunter adjusts confidences,
+    then we re-rank (confidence is a tiebreaker), then savings_analyst produces
+    the ROI ordering, then reporter writes the summary. Gated on one
+    availability check so a run without ``ANTHROPIC_API_KEY`` logs a single line
+    and keeps the deterministic result — the tool never depends on the API.
+    """
+    if not result.findings:
+        return
+    if not agent_base.agent_layer_available():
+        log.info(
+            "agent layer off (no ANTHROPIC_API_KEY or SDK) — deterministic results only"
+        )
+        return
+
+    log.info("running agent layer (model %s)", agent_base.MODEL)
+    waste_hunter.review(result.findings)
+    result.findings = rank_findings(result.findings)  # confidence changed
+    result.savings_analysis = savings_analyst.analyze(result.findings, result.spend)
+    result.summary = reporter.write_summary(result)
 
 
 def _run_real_audit(region: str) -> tuple[list[Finding], CostExplorerResult]:
