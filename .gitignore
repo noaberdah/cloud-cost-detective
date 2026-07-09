@@ -1,5 +1,6 @@
 .venv/
 findings*.json
 report.html
+runs.db
 __pycache__/
 .env

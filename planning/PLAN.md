@@ -80,12 +80,12 @@ a stage, STOP, let the human test it, then continue. Tick boxes as you go.
 - [x] Running without `ANTHROPIC_API_KEY` still works (agents degrade gracefully)
 
 ## Stage 6 — Trend tracking + polished report
-- [ ] Persist each run (SQLite, or timestamped JSON in `runs/`)
-- [ ] Trend line: recoverable $ over the last N runs
-- [ ] Polish the HTML — severity colors, metric cards, generated timestamp
+- [x] Persist each run (SQLite `runs.db` at repo root; `costdetective/storage.py`)
+- [x] Trend line: recoverable $ over the last N runs (self-contained inline SVG)
+- [x] Polish the HTML — severity colors, metric cards, generated timestamp
 
 **Done when:**
-- [ ] Two runs produce a visible trend in the report
+- [x] Two runs produce a visible trend in the report
 
 ## Stage 7 — Polish for CV (+ optional Claude Code layer)
 - [ ] `README.md`: what it is, the CV bullet, setup steps, a screenshot, an architecture diagram

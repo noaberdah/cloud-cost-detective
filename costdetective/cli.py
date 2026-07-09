@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 
+from costdetective import storage
 from costdetective.report import write_report
 from costdetective.scan import AuditResult, run_audit
 
@@ -106,7 +107,13 @@ def _cmd_audit(args: argparse.Namespace) -> int:
         f"across {len(result.findings)} finding(s)."
     )
 
-    path = write_report(result, args.output)
+    # Persist this run, then load history of the same mode (real vs. synthetic)
+    # so the report can chart a trend without a demo polluting real history.
+    # Both calls are internally defensive: failures log and never raise.
+    storage.save_run(result)
+    history = storage.load_recent_runs(synthetic=result.synthetic)
+
+    path = write_report(result, args.output, history=history)
     print(f"Report written to {path.resolve()}")
     return 0
 
